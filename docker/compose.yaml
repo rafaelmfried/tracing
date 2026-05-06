@@ -1,0 +1,103 @@
+name: tracing
+# Compose orquestrador do monorepo: usa profiles para subir subsets coesos.
+#
+#   --profile go       → api-go + postgres + tempo
+#   --profile node     → api-node + postgres + tempo
+#   --profile infra    → postgres
+#   --profile obs      → prometheus + tempo + grafana
+#   --profile all      → tudo
+#
+# A API-go faz build do submódulo go/ e a API-node do node/. Postgres, Tempo,
+# Grafana e Prometheus são compartilhados entre os dois — assim a aula mostra
+# os traces dos DOIS serviços lado a lado no mesmo Grafana.
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    profiles: [infra, go, node, all]
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-tracing}
+      - POSTGRES_USER=${POSTGRES_USER:-tracing}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-tracing}
+    ports: ["${POSTGRES_PORT:-5433}:5432"]
+    volumes:
+      - postgres-data:/var/lib/postgresql
+
+  prometheus:
+    build:
+      context: .
+      dockerfile: Dockerfile.prometheus
+    profiles: [obs, all]
+    ports: ["${PROMETHEUS_PORT:-9090}:9090"]
+
+  tempo:
+    build:
+      context: .
+      dockerfile: Dockerfile.tempo
+    profiles: [obs, go, node, all]
+    ports:
+      - "${TEMPO_HTTP_PORT:-3200}:3200"
+      - "${TEMPO_OTLP_GRPC_PORT:-4317}:4317"
+      - "${TEMPO_OTLP_HTTP_PORT:-4318}:4318"
+    command: -config.file=/etc/tempo.yaml
+
+  grafana:
+    build:
+      context: .
+      dockerfile: Dockerfile.grafana
+    profiles: [obs, all]
+    ports: ["${GRAFANA_PORT:-3000}:3000"]
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_ANONYMOUS_ORG_NAME=Main Org.
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/home.json
+    depends_on:
+      - tempo
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+  api-go:
+    build:
+      context: ../go
+      dockerfile: docker/Dockerfile
+      target: runner-dev
+      args:
+        GOLANG_VERSION: ${GOLANG_VERSION:-1.26.2}
+        PORT: ${GO_PORT:-8090}
+    profiles: [go, all]
+    environment:
+      - PORT=${GO_PORT:-8090}
+      - DATABASE_URL=postgres://${POSTGRES_USER:-tracing}:${POSTGRES_PASSWORD:-tracing}@postgres:5432/${POSTGRES_DB:-tracing}?sslmode=disable
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318
+      - OTEL_SERVICE_NAME=tracing-api
+      - QUERY_SLEEP_SECONDS=${QUERY_SLEEP_SECONDS:-1}
+    ports: ["${GO_PORT:-8090}:${GO_PORT:-8090}"]
+    depends_on:
+      - postgres
+      - tempo
+
+  api-node:
+    build:
+      context: ../node
+      dockerfile: docker/Dockerfile
+      target: runner-dev
+      args:
+        NODE_VERSION: ${NODE_VERSION:-24-alpine}
+        PORT: ${NODE_PORT:-8091}
+    profiles: [node, all]
+    environment:
+      - PORT=${NODE_PORT:-8091}
+      - DATABASE_URL=postgres://${POSTGRES_USER:-tracing}:${POSTGRES_PASSWORD:-tracing}@postgres:5432/${POSTGRES_DB:-tracing}?sslmode=disable
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318
+      - OTEL_SERVICE_NAME=tracing-node
+      - QUERY_SLEEP_SECONDS=${QUERY_SLEEP_SECONDS:-1}
+    ports: ["${NODE_PORT:-8091}:${NODE_PORT:-8091}"]
+    depends_on:
+      - postgres
+      - tempo
+
+volumes:
+  postgres-data:
+  grafana-data:

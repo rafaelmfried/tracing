@@ -1,0 +1,2 @@
+FROM grafana/tempo
+COPY tempo.yaml /etc/tempo.yaml

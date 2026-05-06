@@ -8,91 +8,130 @@
 
 ## O que é este monorepo
 
-Este é o repositório-pai. As implementações de fato vivem em **submódulos**:
+Este é o repositório-pai. As implementações de fato vivem em **submódulos**, e a infraestrutura compartilhada (Postgres, Tempo, Grafana, Prometheus) vive na raiz, em `docker/`.
 
-| Submódulo | Stack | Repositório |
-| --------- | ----- | ----------- |
-| [`go/`](./go) | Go 1.26 + Gin + pgx + OpenTelemetry | <https://github.com/rafaelmfried/tracing-go> |
-| [`node/`](./node) | Node 24 + TypeScript (em construção) | <https://github.com/rafaelmfried/tracing-node> |
+| Componente | Tipo | Repositório |
+| ---------- | ---- | ----------- |
+| [`go/`](./go) | Submódulo (Go 1.26 + Gin + pgx + OTEL) | <https://github.com/rafaelmfried/tracing-go> |
+| [`node/`](./node) | Submódulo (Node 24 + Fastify + pg + OTEL) | <https://github.com/rafaelmfried/tracing-node> |
+| `docker/` | Infra compartilhada — orquestrada pelo Makefile da raiz | (este repo) |
 
-Os dois implementam **a mesma demo**:
-
-| Rota | Comportamento | Esperado |
-| ---- | ------------- | -------- |
-| `GET /sync` | Roda 3 queries lentas sequencialmente | ≈ N × `SLEEP` |
-| `GET /parallel` | Roda 3 queries lentas em paralelo | ≈ 1 × `SLEEP` |
-
-A diferença está em **como cada linguagem expressa concorrência**:
+Os dois submódulos implementam **a mesma demo** com primitivas diferentes:
 
 | Conceito | Go | Node |
 | -------- | -- | ---- |
-| Sequencial | `for { runQuery() }` | `for await (const q of queries)` |
+| Sequencial | `for { runQuery() }` | `for...of` com `await` |
 | Paralelo | `errgroup.WithContext` + `g.Go(...)` + `g.Wait()` | `Promise.all([...])` |
 
-A intuição é a mesma. O **trace** no Tempo mostra o waterfall idêntico — porque o que muda é só a primitiva, não o resultado observável.
+| Rota | Comportamento | Esperado |
+| ---- | ------------- | -------- |
+| `GET /sync` | 3 queries lentas em série | ≈ N × `SLEEP` |
+| `GET /parallel` | 3 queries lentas em paralelo | ≈ 1 × `SLEEP` |
 
 ---
 
-## Como clonar
+## Clonando
 
-Sempre clone com `--recurse-submodules`:
+**A forma certa** (com submódulos):
 
 ```bash
 git clone --recurse-submodules https://github.com/rafaelmfried/tracing.git
 cd tracing
+make init       # cria .env, garante submódulos sincronizados
+make up all     # sobe go + node + infra + observabilidade
 ```
 
-Já clonou sem? Atualize:
+**Já clonou sem `--recurse-submodules`?** Duas saídas:
 
 ```bash
-git submodule update --init --recursive
+make init       # tenta puxar os submodules sem refazer o checkout
+# OU, do zero:
+make reclone    # apaga este diretório e re-clona corretamente
 ```
 
-Para puxar a última versão de cada submódulo:
+`make reclone` é interativo — pede confirmação, avisa se há trabalho não pushado, e re-clona no mesmo lugar.
+
+---
+
+## Comandos principais
+
+Tudo passa pelo `Makefile` da raiz, que orquestra o `docker/compose.yaml` consolidado via **profiles**:
 
 ```bash
-git submodule update --remote --merge
+make help                 # cheat sheet completa
+
+# Subir/derrubar subsets coesos (use 'all' para tudo):
+make up go                # api-go + postgres + tempo
+make up node              # api-node + postgres + tempo
+make up infra             # postgres
+make up obs               # prometheus + tempo + grafana
+make up all               # tudo
+
+make down go              # mesma sintaxe para derrubar
+make restart node         # idem
+make logs all             # tail combinado
+make clean                # down + apaga volumes (Postgres e Grafana zerados)
+
+# Testes (delegam para os submódulos):
+make test                 # go + node
+make test-go
+make test-node
 ```
+
+Endereços (defaults, ajustáveis em `.env`):
+
+- API Go: <http://localhost:8090> · Swagger: <http://localhost:8090/swagger/index.html>
+- API Node: <http://localhost:8091> · Swagger: <http://localhost:8091/swagger>
+- Grafana (anônimo Admin): <http://localhost:3000> — abre direto no dashboard "Tracing — Home"
+- Tempo (API): <http://localhost:3200>
+- Prometheus: <http://localhost:9090>
 
 ---
 
 ## Estrutura
 
 ```
-tracing/                          ← este repo (monorepo / pai)
-├── README.md                     ← visão geral da aula
+tracing/                           ← este repo (monorepo / pai)
+├── README.md                      ← visão geral da aula
+├── Makefile                       ← orquestrador (use: make up [go|node|infra|obs|all])
+├── .env.example
 ├── .gitmodules
-├── go/                           ← submódulo Go (tracing-go)
-│   ├── cmd/api/
-│   ├── internal/{app,infra,...}
-│   ├── docker/{compose.yaml, ...}
-│   └── README.md                 ← roteiro da aula em Go
-└── node/                         ← submódulo Node (tracing-node)
-    └── README.md                 ← roteiro paralelo em Node (em construção)
+├── docker/                        ← infra compartilhada
+│   ├── compose.yaml               ← go + node + postgres + tempo + grafana + prometheus
+│   ├── Dockerfile.{tempo,prometheus,grafana}
+│   ├── tempo.yaml
+│   ├── prometheus.yaml
+│   └── grafana/{provisioning, dashboards/home.json}
+├── scripts/
+│   ├── make-help.sh               ← gera tela de ajuda colorida
+│   └── reclone.sh                 ← apaga e re-clona com submodules
+├── go/                            ← submódulo Go
+│   ├── cmd/api/, internal/, docker/, Makefile, ...
+│   └── README.md                  ← roteiro da aula em Go
+└── node/                          ← submódulo Node
+    ├── src/, tests/, docker/, Makefile, ...
+    └── README.md                  ← roteiro paralelo em Node
 ```
 
 ---
 
-## Roteiro da aula (visão geral)
+## Roteiro da aula
 
-1. **Conceitos** (slides separados): o que é trace, span, context propagation; OpenTelemetry; Tempo + Grafana.
-2. **Demo Go** — entrar em `go/`, seguir o README:
-   - Subir `make up` (api + Postgres + Tempo + Grafana provisionado).
-   - Bater `/sync` e `/parallel`, ver o `total_ms` na resposta.
-   - Abrir o **Tracing — Home** dashboard no Grafana — comparar waterfall.
-   - Discutir: pool de conexões, `errgroup`, dependência entre queries.
-3. **Demo Node** — entrar em `node/`, mesma sequência. Mostrar como `Promise.all` substitui `errgroup`.
-4. **Discussão final** — concorrência é uma propriedade da modelagem, não da linguagem.
+1. **Conceitos** (slides separados): trace, span, context propagation; OpenTelemetry; Tempo + Grafana.
+2. **Setup**: `make init && make up all` — leva ~30s na primeira vez (build das imagens).
+3. **Demo Go** — bater `/sync` e `/parallel` em :8090, ver os 4 painéis no Grafana → Home.
+4. **Demo Node** — repetir em :8091; mostrar que os mesmos painéis no Grafana ganham traces do `tracing-node` lado a lado.
+5. **Discussão final** — concorrência é uma propriedade da modelagem. As primitivas mudam (goroutines/errgroup ↔ Promise.all), o trace continua o mesmo.
 
 ---
 
-## Trabalhando com o monorepo
+## Trabalhando com o monorepo (devs)
 
 **Editando um submódulo:**
 
 ```bash
 cd go            # entra no submódulo
-git checkout main
+git checkout main && git pull
 # ... edita, testa ...
 git add -A && git commit -m "..."
 git push origin main
@@ -103,7 +142,13 @@ git commit -m "chore: bump go submodule"
 git push
 ```
 
-**Rodando os dois ao mesmo tempo (planejado):** um `compose.yaml` no nível do monorepo que sobe ambas as APIs (portas diferentes) compartilhando o mesmo Tempo, para demonstrar lado a lado.
+**Atualizando submódulos para o último HEAD remoto:**
+
+```bash
+git submodule update --remote --merge
+git add go node
+git commit -m "chore: bump submodules"
+```
 
 ---
 

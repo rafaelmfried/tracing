@@ -1,0 +1,74 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "text",
+      "title": "Tracing — aula prática (Go + Node)",
+      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "mode": "markdown",
+        "content": "# Tracing — sync vs paralelo\n\nMaterial de aula — **Rafael Friederick / Unnamed-Lab**.\n\nDois serviços expondo as MESMAS rotas, com primitivas de concorrência diferentes:\n\n- **`tracing-api`** (Go) — `errgroup` + goroutines (`http://localhost:8090`)\n- **`tracing-node`** — `Promise.all` (`http://localhost:8091`)\n\nClique em qualquer trace abaixo para abrir o waterfall e comparar."
+      }
+    },
+    {
+      "type": "table",
+      "title": "Go — /sync",
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 5},
+      "id": 2,
+      "datasource": {"type": "tempo", "uid": "tempo"},
+      "targets": [{"refId": "A", "datasource": {"type": "tempo", "uid": "tempo"}, "queryType": "traceql", "query": "{resource.service.name=\"tracing-api\" && name=\"GET /sync\"}", "limit": 20, "tableType": "traces"}]
+    },
+    {
+      "type": "table",
+      "title": "Go — /parallel",
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 5},
+      "id": 3,
+      "datasource": {"type": "tempo", "uid": "tempo"},
+      "targets": [{"refId": "A", "datasource": {"type": "tempo", "uid": "tempo"}, "queryType": "traceql", "query": "{resource.service.name=\"tracing-api\" && name=\"GET /parallel\"}", "limit": 20, "tableType": "traces"}]
+    },
+    {
+      "type": "table",
+      "title": "Node — /sync",
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 14},
+      "id": 4,
+      "datasource": {"type": "tempo", "uid": "tempo"},
+      "targets": [{"refId": "A", "datasource": {"type": "tempo", "uid": "tempo"}, "queryType": "traceql", "query": "{resource.service.name=\"tracing-node\" && name=\"GET /sync\"}", "limit": 20, "tableType": "traces"}]
+    },
+    {
+      "type": "table",
+      "title": "Node — /parallel",
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 14},
+      "id": 5,
+      "datasource": {"type": "tempo", "uid": "tempo"},
+      "targets": [{"refId": "A", "datasource": {"type": "tempo", "uid": "tempo"}, "queryType": "traceql", "query": "{resource.service.name=\"tracing-node\" && name=\"GET /parallel\"}", "limit": 20, "tableType": "traces"}]
+    },
+    {
+      "type": "text",
+      "title": "Como usar",
+      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 23},
+      "id": 6,
+      "options": {
+        "mode": "markdown",
+        "content": "1. Bata as rotas de cada serviço:\n   ```\n   curl localhost:8090/sync && curl localhost:8090/parallel   # Go\n   curl localhost:8091/sync && curl localhost:8091/parallel   # Node\n   ```\n2. Refresh deste dashboard (auto **10s**).\n3. Compare lado a lado os waterfalls — os 3 spans `query.*` aparecem **encadeados** em `/sync` e **empilhados** em `/parallel`.\n4. Discuta: o conceito é o mesmo, só muda a primitiva (goroutines vs Promises)."
+      }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["tracing", "class", "unnamed-lab", "go", "node"],
+  "templating": {"list": []},
+  "time": {"from": "now-15m", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Tracing — Home",
+  "uid": "tracing-home",
+  "version": 3,
+  "weekStart": ""
+}
