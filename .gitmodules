@@ -1,0 +1,6 @@
+[submodule "go"]
+	path = go
+	url = https://github.com/rafaelmfried/tracing-go.git
+[submodule "node"]
+	path = node
+	url = https://github.com/rafaelmfried/tracing-node.git
