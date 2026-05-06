@@ -10,22 +10,22 @@
 
 Este é o repositório-pai. As implementações de fato vivem em **submódulos**, e a infraestrutura compartilhada (Postgres, Tempo, Grafana, Prometheus) vive na raiz, em `docker/`.
 
-| Componente | Tipo | Repositório |
-| ---------- | ---- | ----------- |
-| [`go/`](./go) | Submódulo (Go 1.26 + Gin + pgx + OTEL) | <https://github.com/rafaelmfried/tracing-go> |
-| [`node/`](./node) | Submódulo (Node 24 + Fastify + pg + OTEL) | <https://github.com/rafaelmfried/tracing-node> |
-| `docker/` | Infra compartilhada — orquestrada pelo Makefile da raiz | (este repo) |
+| Componente        | Tipo                                                    | Repositório                                    |
+| ----------------- | ------------------------------------------------------- | ---------------------------------------------- |
+| [`go/`](./go)     | Submódulo (Go 1.26 + Gin + pgx + OTEL)                  | <https://github.com/rafaelmfried/tracing-go>   |
+| [`node/`](./node) | Submódulo (Node 24 + Fastify + pg + OTEL)               | <https://github.com/rafaelmfried/tracing-node> |
+| `docker/`         | Infra compartilhada — orquestrada pelo Makefile da raiz | (este repo)                                    |
 
 Os dois submódulos implementam **a mesma demo** com primitivas diferentes:
 
-| Conceito | Go | Node |
-| -------- | -- | ---- |
-| Sequencial | `for { runQuery() }` | `for...of` com `await` |
-| Paralelo | `errgroup.WithContext` + `g.Go(...)` + `g.Wait()` | `Promise.all([...])` |
+| Conceito   | Go                                                | Node                   |
+| ---------- | ------------------------------------------------- | ---------------------- |
+| Sequencial | `for { runQuery() }`                              | `for...of` com `await` |
+| Paralelo   | `errgroup.WithContext` + `g.Go(...)` + `g.Wait()` | `Promise.all([...])`   |
 
-| Rota | Comportamento | Esperado |
-| ---- | ------------- | -------- |
-| `GET /sync` | 3 queries lentas em série | ≈ N × `SLEEP` |
+| Rota            | Comportamento                | Esperado      |
+| --------------- | ---------------------------- | ------------- |
+| `GET /sync`     | 3 queries lentas em série    | ≈ N × `SLEEP` |
 | `GET /parallel` | 3 queries lentas em paralelo | ≈ 1 × `SLEEP` |
 
 ---
